@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+logs/*.log
+data/used_topics.json
+.venv/
+venv/

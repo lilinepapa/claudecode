@@ -3,14 +3,15 @@ import random
 from pathlib import Path
 
 from agents.base_agent import BaseAgent
+from agents.weekly_planner_agent import WeeklyPlannerAgent
 from models.blog_post import Topic
 
 
 class TopicAgent(BaseAgent):
     """주제 선정 에이전트.
 
-    topics.json에서 주제를 로드하고, 이미 사용한 주제를 추적해
-    중복 없이 순환 발행한다.
+    오늘의 주간 계획(weekly_plan.json)을 우선 확인하고,
+    없으면 topics.json에서 순환 발행한다.
     """
 
     def __init__(self, *args, **kwargs):
@@ -27,9 +28,22 @@ class TopicAgent(BaseAgent):
     # ------------------------------------------------------------------
 
     async def run(self, count: int = 1) -> list[Topic]:
-        """사용하지 않은 주제를 count개 반환한다."""
+        """오늘의 주간 계획을 먼저 확인하고, 없으면 topics.json에서 선정한다."""
+        planned = WeeklyPlannerAgent.load_todays_plan()
+        if planned:
+            topic = Topic(
+                title=planned["title"],
+                category=planned.get("mode", "박팀장"),
+                keywords=planned.get("keywords", []),
+                description=planned.get("angle", ""),
+                mode=planned.get("mode", "박팀장"),
+                hook=planned.get("hook", ""),
+            )
+            self.log_info(f"주간 계획에서 주제 선정: {topic.title} [{topic.mode}]")
+            return [topic]
+
         selected = self._pick(count)
-        self.log_info(f"{len(selected)}개 주제 선정: {[t.title for t in selected]}")
+        self.log_info(f"{len(selected)}개 주제 선정 (fallback): {[t.title for t in selected]}")
         self._save_state()
         return selected
 

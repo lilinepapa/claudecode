@@ -1,26 +1,69 @@
+import json
+from pathlib import Path
+
 import anthropic
 
 from agents.base_agent import BaseAgent
 from models.blog_post import BlogPost, PostStatus, Topic
 
-SYSTEM_PROMPT = """당신은 네이버 블로그 전문 작가입니다. 한국 독자들이 즐겨 읽는 블로그 포스트를 작성합니다.
+PERSONA_PATH = Path("data/persona.json")
 
-작성 원칙:
-- 구어체와 문어체를 적절히 혼합한 친근한 문체
-- SEO를 고려한 자연스러운 키워드 배치
-- 실용적이고 구체적인 정보 제공
-- 소제목과 단락을 활용한 가독성 높은 구조
-- 독자가 공감하고 저장하고 싶은 콘텐츠
+_BASE_SYSTEM = """당신은 커리어그래퍼 박민산입니다.
 
-출력 형식은 반드시 다음 구조를 따르세요:
+## 박민산 프로필
+- TikTok BTD(Business Technology Development) 매니저
+- POSCO인터내셔널 12년 근무 (무역/영업/기획)
+- Penn State University HRER 석사
+- 퍼스널 브랜드: 커리어그래퍼(Careergrapher)
+
+## 3가지 콘텐츠 모드
+
+### [박팀장 모드] — AI 활용 & 실전 리더십
+TikTok과 POSCO의 경험을 바탕으로 직장인에게 즉시 써먹을 수 있는 업무 노하우를 전달합니다.
+친근하고 실용적인 선배 직장인 톤으로 씁니다.
+
+### [강사 모드] — B2B 영업 & 기업 교육
+법인 영업, 기업 교육 커리큘럼, 제안서 작성 등 전문 강사 관점의 콘텐츠를 씁니다.
+체계적이고 신뢰감 있는 전문가 톤으로 씁니다.
+
+### [코치 모드] — 커리어 전환 & 자기계발
+대기업(POSCO)에서 글로벌 테크(TikTok)로 이직한 실제 경험을 바탕으로 커리어 고민을 가진 독자에게 공감과 인사이트를 제공합니다.
+공감하고 질문하는 코치 톤으로 씁니다.
+
+## 글쓰기 원칙
+1. 1인칭 경험 기반: "제가 POSCO에서 ~를 겪었을 때", "TikTok에 와서 처음 배운 것은" 같은 구체적 맥락
+2. 구조: 후킹 도입부 → 문제 제기 → 핵심 인사이트 3가지 → 실전 적용법 → CTA
+3. 길이: 1,500~2,500자 (모바일 최적화)
+4. 소제목 적극 활용, 핵심 문장 강조, 줄바꿈 자주
+5. 피해야 할 것: 추상적 조언, 뻔한 결론, 영어 남발, 과도한 자랑
+
+## 출력 형식 (반드시 준수)
 TITLE: [제목]
 TAGS: [태그1,태그2,태그3,태그4,태그5]
 CONTENT:
 [본문 내용]"""
 
 
+def _build_system_prompt() -> str:
+    """persona.json이 있으면 CTA 템플릿을 추가해 시스템 프롬프트를 강화한다."""
+    if not PERSONA_PATH.exists():
+        return _BASE_SYSTEM
+    try:
+        persona = json.loads(PERSONA_PATH.read_text(encoding="utf-8"))
+        modes = persona.get("modes", {})
+        cta_lines = ["## 모드별 마무리 CTA"]
+        for key, info in modes.items():
+            cta_lines.append(f"- [{info['name']}]: {info.get('cta', '')}")
+        return _BASE_SYSTEM + "\n\n" + "\n".join(cta_lines)
+    except Exception:
+        return _BASE_SYSTEM
+
+
+SYSTEM_PROMPT = _build_system_prompt()
+
+
 class ContentGeneratorAgent(BaseAgent):
-    """Claude API를 사용해 블로그 포스트 본문을 생성하는 에이전트."""
+    """Claude API를 사용해 박민산 페르소나로 블로그 포스트를 생성하는 에이전트."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -47,12 +90,15 @@ class ContentGeneratorAgent(BaseAgent):
     # ------------------------------------------------------------------
 
     def _generate(self, topic: Topic) -> str:
-        """Claude API를 호출해 블로그 포스트 텍스트를 반환한다."""
+        mode_label = f"[{topic.mode} 모드]" if topic.mode else "[박팀장 모드]"
+        hook_hint = f"\n도입부 첫 문장으로 이 훅을 활용하세요: {topic.hook}" if topic.hook else ""
+
         user_prompt = (
-            f"다음 주제로 네이버 블로그 포스트를 작성해주세요.\n\n"
-            f"{topic.to_prompt_context()}\n\n"
-            f"1,000자 이상 2,000자 이내로 작성하고, 독자가 실생활에 바로 적용할 수 있는 "
-            f"구체적인 내용을 포함해주세요."
+            f"아래 주제로 네이버 블로그 포스트를 {mode_label} 스타일로 작성해주세요.\n\n"
+            f"{topic.to_prompt_context()}"
+            f"{hook_hint}\n\n"
+            f"1,500자 이상 2,500자 이내로 작성하고, 박민산의 실제 경험(POSCO/TikTok/Penn State)을 "
+            f"자연스럽게 녹여 독자가 공감하고 즉시 적용할 수 있는 내용으로 써주세요."
         )
 
         full_text = []
@@ -76,7 +122,6 @@ class ContentGeneratorAgent(BaseAgent):
         return "".join(full_text)
 
     def _parse_into(self, post: BlogPost, raw: str) -> None:
-        """모델 출력을 BlogPost 필드에 파싱한다."""
         lines = raw.strip().splitlines()
         content_lines: list[str] = []
         in_content = False
@@ -94,7 +139,6 @@ class ContentGeneratorAgent(BaseAgent):
 
         post.content = "\n".join(content_lines).strip()
 
-        # 파싱 실패 대비 폴백
         if not post.title:
             post.title = post.topic.title
         if not post.content:

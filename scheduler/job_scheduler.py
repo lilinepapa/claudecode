@@ -13,7 +13,12 @@ logger = logging.getLogger(__name__)
 
 
 class BlogScheduler:
-    """주기적으로 OrchestratorAgent를 실행하는 스케줄러."""
+    """주기적으로 OrchestratorAgent를 실행하는 스케줄러.
+
+    등록 잡:
+      1. 매주 목요일 08:00 — 주간 콘텐츠 계획 수립
+      2. 매일 09:00       — 오늘의 포스트 발행
+    """
 
     def __init__(self, settings: Settings | None = None):
         self._settings = settings or get_settings()
@@ -27,21 +32,39 @@ class BlogScheduler:
     def start(self) -> None:
         """스케줄러를 등록하고 시작한다."""
         cfg = self._settings.scheduler
-        trigger = CronTrigger(
-            hour=cfg.cron_hour,
-            minute=cfg.cron_minute,
-            timezone=cfg.timezone,
+
+        # 잡 1: 매주 목요일 08:00 — 주간 계획 수립 (발행 1시간 전)
+        self._scheduler.add_job(
+            self._run_weekly_planner,
+            trigger=CronTrigger(
+                day_of_week="thu",
+                hour=cfg.cron_hour - 1 if cfg.cron_hour > 0 else 8,
+                minute=cfg.cron_minute,
+                timezone=cfg.timezone,
+            ),
+            id="weekly_content_plan",
+            replace_existing=True,
+            misfire_grace_time=3600,
         )
+
+        # 잡 2: 매일 설정된 시각 — 포스트 발행
         self._scheduler.add_job(
             self._run_pipeline,
-            trigger=trigger,
+            trigger=CronTrigger(
+                hour=cfg.cron_hour,
+                minute=cfg.cron_minute,
+                timezone=cfg.timezone,
+            ),
             id="naver_blog_post",
             replace_existing=True,
-            misfire_grace_time=600,  # 10분 이내 누락 허용
+            misfire_grace_time=600,
         )
+
         self._scheduler.start()
         logger.info(
-            "스케줄러 시작: 매일 %02d:%02d (%s) 실행",
+            "스케줄러 시작: 목요일 %02d:%02d 주간계획 / 매일 %02d:%02d 발행 (%s)",
+            cfg.cron_hour - 1 if cfg.cron_hour > 0 else 8,
+            cfg.cron_minute,
             cfg.cron_hour,
             cfg.cron_minute,
             cfg.timezone,
@@ -56,9 +79,20 @@ class BlogScheduler:
         """즉시 파이프라인 한 번 실행 (테스트/수동 실행용)."""
         await self._run_pipeline()
 
+    async def plan_now(self) -> None:
+        """즉시 주간 계획 수립 (테스트/수동 실행용)."""
+        await self._run_weekly_planner()
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    async def _run_weekly_planner(self) -> None:
+        logger.info("주간 콘텐츠 계획 수립 시작 (목요일 정기 실행)")
+        try:
+            await self._orchestrator.plan_week()
+        except Exception as exc:
+            logger.error("주간 계획 수립 오류: %s", exc, exc_info=True)
 
     async def _run_pipeline(self) -> None:
         posts_count = self._settings.scheduler.posts_per_run

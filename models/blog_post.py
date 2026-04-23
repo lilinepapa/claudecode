@@ -19,16 +19,23 @@ class Topic:
     category: str
     keywords: list[str] = field(default_factory=list)
     description: str = ""
+    mode: str = ""
+    hook: str = ""
     created_at: datetime = field(default_factory=datetime.now)
 
     def to_prompt_context(self) -> str:
         kw = ", ".join(self.keywords) if self.keywords else "없음"
-        return (
+        base = (
             f"주제: {self.title}\n"
             f"카테고리: {self.category}\n"
             f"키워드: {kw}\n"
             f"설명: {self.description}"
         )
+        if self.mode:
+            base += f"\n콘텐츠 모드: {self.mode}"
+        if self.hook:
+            base += f"\n도입부 훅: {self.hook}"
+        return base
 
 
 @dataclass

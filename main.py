@@ -47,8 +47,11 @@ def main() -> None:
 
     # CLI 인자로 즉시 실행 모드 지원
     if len(sys.argv) > 1 and sys.argv[1] == "--run-now":
-        logging.getLogger(__name__).info("즉시 실행 모드")
+        logging.getLogger(__name__).info("즉시 실행 모드 (포스트 발행)")
         asyncio.run(scheduler.run_now())
+    elif len(sys.argv) > 1 and sys.argv[1] == "--plan-now":
+        logging.getLogger(__name__).info("즉시 실행 모드 (주간 계획 수립)")
+        asyncio.run(scheduler.plan_now())
     else:
         asyncio.run(_run_daemon(scheduler))
 

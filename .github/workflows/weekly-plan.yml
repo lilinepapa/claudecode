@@ -1,0 +1,59 @@
+name: 주간 콘텐츠 계획 수립 (목요일)
+
+on:
+  schedule:
+    # 매주 수요일 23:00 UTC = 목요일 08:00 KST (발행 1시간 전)
+    - cron: '0 23 * * 3'
+  workflow_dispatch:  # 수동 실행 (테스트용)
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # weekly_plan.json 커밋을 위해 필요
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 3.11 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: Playwright Chromium 설치
+        run: playwright install chromium --with-deps
+
+      - name: 실행 디렉토리 생성
+        run: mkdir -p logs data
+
+      - name: .env 파일 생성
+        run: |
+          cat > .env << 'ENVEOF'
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_MODEL=claude-opus-4-7
+          NAVER_USERNAME=${{ secrets.NAVER_USERNAME }}
+          NAVER_PASSWORD=${{ secrets.NAVER_PASSWORD }}
+          NAVER_BLOG_ID=${{ secrets.NAVER_BLOG_ID }}
+          SCHEDULE_HOUR=9
+          SCHEDULE_MINUTE=0
+          POSTS_PER_RUN=1
+          TIMEZONE=Asia/Seoul
+          LOG_LEVEL=INFO
+          HEADLESS_BROWSER=true
+          ENVEOF
+
+      - name: 주간 콘텐츠 계획 수립
+        run: python main.py --plan-now
+
+      - name: 주간 계획 레포에 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/weekly_plan.json
+          git diff --staged --quiet || git commit -m "chore: 주간 콘텐츠 계획 $(date +'%Y-%m-%d')"
+          git push

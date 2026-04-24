@@ -1,0 +1,59 @@
+name: 네이버 블로그 일일 발행
+
+on:
+  schedule:
+    # 매일 00:00 UTC = 09:00 KST
+    - cron: '0 0 * * *'
+  workflow_dispatch:  # 수동 실행 (테스트용)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # used_topics.json 커밋을 위해 필요
+
+    steps:
+      - name: 코드 체크아웃 (최신 weekly_plan.json 포함)
+        uses: actions/checkout@v4
+
+      - name: Python 3.11 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: Playwright Chromium 설치
+        run: playwright install chromium --with-deps
+
+      - name: 실행 디렉토리 생성
+        run: mkdir -p logs data
+
+      - name: .env 파일 생성
+        run: |
+          cat > .env << 'ENVEOF'
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_MODEL=claude-opus-4-7
+          NAVER_USERNAME=${{ secrets.NAVER_USERNAME }}
+          NAVER_PASSWORD=${{ secrets.NAVER_PASSWORD }}
+          NAVER_BLOG_ID=${{ secrets.NAVER_BLOG_ID }}
+          SCHEDULE_HOUR=9
+          SCHEDULE_MINUTE=0
+          POSTS_PER_RUN=1
+          TIMEZONE=Asia/Seoul
+          LOG_LEVEL=INFO
+          HEADLESS_BROWSER=true
+          ENVEOF
+
+      - name: 블로그 포스트 발행
+        run: python main.py --run-now
+
+      - name: 사용된 주제 목록 커밋 (fallback 상태 유지)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/used_topics.json 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "chore: 주제 사용 현황 업데이트 $(date +'%Y-%m-%d')"
+          git push 2>/dev/null || true

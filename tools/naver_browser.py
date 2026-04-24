@@ -69,7 +69,11 @@ class NaverBlogBrowser:
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(
             headless=self._headless,
-            args=["--no-sandbox", "--disable-dev-shm-usage"],
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--ignore-certificate-errors",
+            ],
         )
         self._context = await self._browser.new_context(
             user_agent=(
@@ -99,9 +103,17 @@ class NaverBlogBrowser:
 
     async def _login(self, page: Page) -> None:
         logger.debug("네이버 로그인 시도")
-        await page.goto(_NAVER_LOGIN_URL, wait_until="domcontentloaded")
+        await page.goto(_NAVER_LOGIN_URL, wait_until="load", timeout=30_000)
+        await asyncio.sleep(2)
+
+        # 디버그용 스크린샷 저장
+        import pathlib
+        pathlib.Path("logs").mkdir(exist_ok=True)
+        await page.screenshot(path="logs/login_debug.png", full_page=True)
+        logger.info("로그인 페이지 스크린샷 저장: logs/login_debug.png (현재 URL: %s)", page.url)
 
         # 아이디 / 비밀번호 입력
+        await page.wait_for_selector("#id", timeout=15_000)
         await page.fill("#id", self._username)
         await page.fill("#pw", self._password)
         await page.click(".btn_login")

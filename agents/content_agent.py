@@ -1,10 +1,9 @@
 import json
 from pathlib import Path
 
-import anthropic
-
 from agents.base_agent import BaseAgent
 from models.blog_post import BlogPost, PostStatus, Topic
+from tools.claude_cli import call_claude
 
 PERSONA_PATH = Path("data/persona.json")
 
@@ -62,11 +61,7 @@ SYSTEM_PROMPT = _build_system_prompt()
 
 
 class ContentGeneratorAgent(BaseAgent):
-    """Anthropic API를 사용해 박민산 페르소나로 블로그 포스트를 생성하는 에이전트."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._client = anthropic.Anthropic(api_key=self.settings.claude.api_key)
+    """Claude Code CLI를 사용해 박민산 페르소나로 블로그 포스트를 생성하는 에이전트."""
 
     async def run(self, topic: Topic) -> BlogPost:
         post = BlogPost(topic=topic, status=PostStatus.GENERATING)
@@ -88,7 +83,9 @@ class ContentGeneratorAgent(BaseAgent):
         mode_label = f"[{topic.mode} 모드]" if topic.mode else "[박팀장 모드]"
         hook_hint = f"\n도입부 첫 문장으로 이 훅을 활용하세요: {topic.hook}" if topic.hook else ""
 
-        user_prompt = (
+        full_prompt = (
+            f"{SYSTEM_PROMPT}\n\n"
+            f"---\n\n"
             f"아래 주제로 네이버 블로그 포스트를 {mode_label} 스타일로 작성해주세요.\n\n"
             f"{topic.to_prompt_context()}"
             f"{hook_hint}\n\n"
@@ -96,23 +93,7 @@ class ContentGeneratorAgent(BaseAgent):
             f"자연스럽게 녹여 독자가 공감하고 즉시 적용할 수 있는 내용으로 써주세요."
         )
 
-        full_text = []
-        with self._client.messages.stream(
-            model=self.settings.claude.model,
-            max_tokens=self.settings.claude.max_tokens,
-            system=[
-                {
-                    "type": "text",
-                    "text": SYSTEM_PROMPT,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            messages=[{"role": "user", "content": user_prompt}],
-        ) as stream:
-            for text in stream.text_stream:
-                full_text.append(text)
-
-        return "".join(full_text)
+        return call_claude(full_prompt)
 
     def _parse_into(self, post: BlogPost, raw: str) -> None:
         lines = raw.strip().splitlines()

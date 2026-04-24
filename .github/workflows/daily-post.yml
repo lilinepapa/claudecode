@@ -10,7 +10,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # used_topics.json 커밋을 위해 필요
+      contents: write
 
     steps:
       - name: 코드 체크아웃 (최신 weekly_plan.json 포함)
@@ -21,6 +21,14 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+
+      - name: Node.js 설정
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Claude Code CLI 설치
+        run: npm install -g @anthropic-ai/claude-code
 
       - name: 의존성 설치
         run: pip install -r requirements.txt
@@ -34,7 +42,6 @@ jobs:
       - name: .env 파일 생성
         run: |
           cat > .env << 'ENVEOF'
-          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
           LLM_MODEL=claude-opus-4-7
           NAVER_USERNAME=${{ secrets.NAVER_USERNAME }}
           NAVER_PASSWORD=${{ secrets.NAVER_PASSWORD }}
@@ -49,8 +56,10 @@ jobs:
 
       - name: 블로그 포스트 발행
         run: python main.py --run-now
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
-      - name: 사용된 주제 목록 커밋 (fallback 상태 유지)
+      - name: 사용된 주제 목록 커밋
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

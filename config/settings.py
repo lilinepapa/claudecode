@@ -20,9 +20,7 @@ class NaverConfig:
 
 @dataclass
 class LLMConfig:
-    api_key: str = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", ""))
     model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", "claude-opus-4-7"))
-    max_tokens: int = 4096
 
 
 @dataclass

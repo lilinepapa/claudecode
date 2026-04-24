@@ -5,17 +5,16 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import anthropic
-
 from agents.base_agent import BaseAgent
 from config.settings import Settings
+from tools.claude_cli import call_claude
 
 logger = logging.getLogger(__name__)
 
 WEEKLY_PLAN_PATH = Path("data/weekly_plan.json")
 PERSONA_PATH = Path("data/persona.json")
 
-PLANNER_SYSTEM_PROMPT = """당신은 커리어그래퍼 박민산의 전속 콘텐츠 전략가입니다.
+PLANNER_SYSTEM = """당신은 커리어그래퍼 박민산의 전속 콘텐츠 전략가입니다.
 
 박민산 프로필:
 - TikTok BTD 매니저 / POSCO인터내셔널 12년 경력
@@ -28,11 +27,10 @@ PLANNER_SYSTEM_PROMPT = """당신은 커리어그래퍼 박민산의 전속 콘�
 
 
 class WeeklyPlannerAgent(BaseAgent):
-    """Anthropic API를 활용해 7일치 블로그 콘텐츠 계획을 생성하고 저장한다."""
+    """Claude Code CLI를 활용해 7일치 블로그 콘텐츠 계획을 생성하고 저장한다."""
 
     def __init__(self, settings: Settings | None = None):
         super().__init__(settings)
-        self._client = anthropic.Anthropic(api_key=self.settings.claude.api_key)
         self._persona = self._load_persona()
 
     def _load_persona(self) -> dict:
@@ -64,8 +62,8 @@ class WeeklyPlannerAgent(BaseAgent):
                 "theme": rot.get("theme", ""),
             })
 
-        user_prompt = self._build_prompt(day_contexts)
-        response_text = self._call_api(user_prompt)
+        full_prompt = self._build_prompt(day_contexts)
+        response_text = call_claude(full_prompt)
         return self._parse_response(response_text, day_contexts)
 
     def _build_prompt(self, day_contexts: list[dict]) -> str:
@@ -76,7 +74,11 @@ class WeeklyPlannerAgent(BaseAgent):
         )
         days_info = json.dumps(day_contexts, ensure_ascii=False, indent=2)
 
-        return f"""박민산(커리어그래퍼)의 다음 7일 네이버 블로그 콘텐츠 계획을 수립해주세요.
+        return f"""{PLANNER_SYSTEM}
+
+---
+
+박민산(커리어그래퍼)의 다음 7일 네이버 블로그 콘텐츠 계획을 수립해주세요.
 
 각 모드별 주요 주제:
 {modes_info}
@@ -105,26 +107,21 @@ class WeeklyPlannerAgent(BaseAgent):
   ]
 }}"""
 
-    def _call_api(self, user_prompt: str) -> str:
-        response = self._client.messages.create(
-            model=self.settings.claude.model,
-            max_tokens=4096,
-            system=[
-                {
-                    "type": "text",
-                    "text": PLANNER_SYSTEM_PROMPT,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-        return response.content[0].text
-
     def _parse_response(self, text: str, day_contexts: list[dict]) -> dict:
         text = text.strip()
-        if text.startswith("```"):
-            lines = text.split("\n")
-            text = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
+
+        # ```json ... ``` 블록 추출
+        if "```" in text:
+            import re
+            match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+            if match:
+                text = match.group(1).strip()
+
+        # 응답에서 { ... } 최외곽 JSON 객체만 추출
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1:
+            text = text[start:end + 1]
 
         try:
             plan = json.loads(text)
@@ -133,7 +130,7 @@ class WeeklyPlannerAgent(BaseAgent):
             plan.setdefault("generated_at", today_str)
             return plan
         except json.JSONDecodeError:
-            logger.warning("API 응답 JSON 파싱 실패, 기본 플랜 사용")
+            logger.warning("CLI 응답 JSON 파싱 실패, 기본 플랜 사용\n응답 앞부분: %s", text[:200])
             return self._fallback_plan(day_contexts)
 
     def _fallback_plan(self, day_contexts: list[dict]) -> dict:

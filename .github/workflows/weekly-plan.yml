@@ -10,7 +10,7 @@ jobs:
   plan:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # weekly_plan.json 커밋을 위해 필요
+      contents: write
 
     steps:
       - name: 코드 체크아웃
@@ -21,6 +21,14 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+
+      - name: Node.js 설정
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Claude Code CLI 설치
+        run: npm install -g @anthropic-ai/claude-code
 
       - name: 의존성 설치
         run: pip install -r requirements.txt
@@ -34,7 +42,6 @@ jobs:
       - name: .env 파일 생성
         run: |
           cat > .env << 'ENVEOF'
-          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
           LLM_MODEL=claude-opus-4-7
           NAVER_USERNAME=${{ secrets.NAVER_USERNAME }}
           NAVER_PASSWORD=${{ secrets.NAVER_PASSWORD }}
@@ -47,8 +54,15 @@ jobs:
           HEADLESS_BROWSER=true
           ENVEOF
 
+      - name: Claude 인증 설정
+        run: echo "${{ secrets.ANTHROPIC_API_KEY }}" | claude config set api_key -
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
       - name: 주간 콘텐츠 계획 수립
         run: python main.py --plan-now
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: 주간 계획 레포에 커밋
         run: |

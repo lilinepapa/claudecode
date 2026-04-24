@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import anthropic
+from openai import OpenAI
 
 from agents.base_agent import BaseAgent
 from config.settings import Settings
@@ -28,11 +28,14 @@ PLANNER_SYSTEM_PROMPT = """당신은 커리어그래퍼 박민산의 전속 콘�
 
 
 class WeeklyPlannerAgent(BaseAgent):
-    """Claude를 활용해 7일치 블로그 콘텐츠 계획을 생성하고 저장한다."""
+    """DeepSeek API를 활용해 7일치 블로그 콘텐츠 계획을 생성하고 저장한다."""
 
     def __init__(self, settings: Settings | None = None):
         super().__init__(settings)
-        self._client = anthropic.Anthropic(api_key=self.settings.claude.api_key)
+        self._client = OpenAI(
+            api_key=self.settings.claude.api_key,
+            base_url=self.settings.claude.base_url,
+        )
         self._persona = self._load_persona()
 
     def _load_persona(self) -> dict:
@@ -42,16 +45,13 @@ class WeeklyPlannerAgent(BaseAgent):
         return {}
 
     async def run(self, *args, **kwargs) -> dict:
-        """목요일 기준 다음 7일 콘텐츠 계획을 생성하고 저장한다."""
         plan = self._generate_plan()
         self._save_plan(plan)
         logger.info("주간 콘텐츠 계획 수립 완료: %d개 항목", len(plan.get("days", [])))
         return plan
 
     def _generate_plan(self) -> dict:
-        """Claude API를 호출해 7일치 계획을 JSON으로 받는다."""
         today = datetime.now()
-        # 오늘(목요일)부터 다음 7일
         date_range = [(today + timedelta(days=i)) for i in range(7)]
         rotation = self._persona.get("weekly_content_rotation", {})
 
@@ -68,7 +68,7 @@ class WeeklyPlannerAgent(BaseAgent):
             })
 
         user_prompt = self._build_prompt(day_contexts)
-        response_text = self._call_claude(user_prompt)
+        response_text = self._call_api(user_prompt)
         return self._parse_response(response_text, day_contexts)
 
     def _build_prompt(self, day_contexts: list[dict]) -> str:
@@ -108,25 +108,19 @@ class WeeklyPlannerAgent(BaseAgent):
   ]
 }}"""
 
-    def _call_claude(self, user_prompt: str) -> str:
-        response = self._client.messages.create(
+    def _call_api(self, user_prompt: str) -> str:
+        response = self._client.chat.completions.create(
             model=self.settings.claude.model,
             max_tokens=4096,
-            system=[
-                {
-                    "type": "text",
-                    "text": PLANNER_SYSTEM_PROMPT,
-                    "cache_control": {"type": "ephemeral"},
-                }
+            messages=[
+                {"role": "system", "content": PLANNER_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
             ],
-            messages=[{"role": "user", "content": user_prompt}],
         )
-        return response.content[0].text
+        return response.choices[0].message.content
 
     def _parse_response(self, text: str, day_contexts: list[dict]) -> dict:
-        """JSON 파싱, 실패 시 기본 플랜 반환."""
         text = text.strip()
-        # ```json ... ``` 블록 제거
         if text.startswith("```"):
             lines = text.split("\n")
             text = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
@@ -138,11 +132,10 @@ class WeeklyPlannerAgent(BaseAgent):
             plan.setdefault("generated_at", today_str)
             return plan
         except json.JSONDecodeError:
-            logger.warning("Claude 응답 JSON 파싱 실패, 기본 플랜 사용")
+            logger.warning("API 응답 JSON 파싱 실패, 기본 플랜 사용")
             return self._fallback_plan(day_contexts)
 
     def _fallback_plan(self, day_contexts: list[dict]) -> dict:
-        """API 호출 실패 시 사용하는 기본 플랜."""
         today_str = datetime.now().strftime("%Y-%m-%d")
         fallback_titles = {
             "박팀장": "AI로 업무 효율 3배 올린 실전 방법",
@@ -171,7 +164,6 @@ class WeeklyPlannerAgent(BaseAgent):
 
     @staticmethod
     def load_todays_plan() -> dict | None:
-        """오늘 날짜에 해당하는 계획 항목을 반환한다."""
         if not WEEKLY_PLAN_PATH.exists():
             return None
         with open(WEEKLY_PLAN_PATH, encoding="utf-8") as f:

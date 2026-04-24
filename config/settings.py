@@ -19,9 +19,10 @@ class NaverConfig:
 
 
 @dataclass
-class ClaudeConfig:
-    api_key: str = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", ""))
-    model: str = field(default_factory=lambda: os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6"))
+class LLMConfig:
+    api_key: str = field(default_factory=lambda: os.getenv("DEEPSEEK_API_KEY", ""))
+    model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", "deepseek-chat"))
+    base_url: str = field(default_factory=lambda: os.getenv("LLM_BASE_URL", "https://api.deepseek.com"))
     max_tokens: int = 4096
 
 
@@ -38,7 +39,7 @@ class SchedulerConfig:
 @dataclass
 class Settings:
     naver: NaverConfig = field(default_factory=NaverConfig)
-    claude: ClaudeConfig = field(default_factory=ClaudeConfig)
+    claude: LLMConfig = field(default_factory=LLMConfig)
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
     data_dir: Path = BASE_DIR / "data"

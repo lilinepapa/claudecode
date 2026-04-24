@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-import anthropic
+from openai import OpenAI
 
 from agents.base_agent import BaseAgent
 from models.blog_post import BlogPost, PostStatus, Topic
@@ -45,7 +45,6 @@ CONTENT:
 
 
 def _build_system_prompt() -> str:
-    """persona.json이 있으면 CTA 템플릿을 추가해 시스템 프롬프트를 강화한다."""
     if not PERSONA_PATH.exists():
         return _BASE_SYSTEM
     try:
@@ -63,11 +62,14 @@ SYSTEM_PROMPT = _build_system_prompt()
 
 
 class ContentGeneratorAgent(BaseAgent):
-    """Claude API를 사용해 박민산 페르소나로 블로그 포스트를 생성하는 에이전트."""
+    """DeepSeek API를 사용해 박민산 페르소나로 블로그 포스트를 생성하는 에이전트."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._client = anthropic.Anthropic(api_key=self.settings.claude.api_key)
+        self._client = OpenAI(
+            api_key=self.settings.claude.api_key,
+            base_url=self.settings.claude.base_url,
+        )
 
     async def run(self, topic: Topic) -> BlogPost:
         post = BlogPost(topic=topic, status=PostStatus.GENERATING)
@@ -102,22 +104,19 @@ class ContentGeneratorAgent(BaseAgent):
         )
 
         full_text = []
-        with self._client.messages.stream(
+        stream = self._client.chat.completions.create(
             model=self.settings.claude.model,
             max_tokens=self.settings.claude.max_tokens,
-            thinking={"type": "adaptive"},
-            output_config={"effort": "medium"},
-            system=[
-                {
-                    "type": "text",
-                    "text": SYSTEM_PROMPT,
-                    "cache_control": {"type": "ephemeral"},
-                }
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
             ],
-            messages=[{"role": "user", "content": user_prompt}],
-        ) as stream:
-            for text in stream.text_stream:
-                full_text.append(text)
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                full_text.append(delta)
 
         return "".join(full_text)
 

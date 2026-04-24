@@ -20,9 +20,8 @@ class NaverConfig:
 
 @dataclass
 class LLMConfig:
-    api_key: str = field(default_factory=lambda: os.getenv("DEEPSEEK_API_KEY", ""))
-    model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", "deepseek-chat"))
-    base_url: str = field(default_factory=lambda: os.getenv("LLM_BASE_URL", "https://api.deepseek.com"))
+    api_key: str = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", ""))
+    model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", "claude-opus-4-7"))
     max_tokens: int = 4096
 
 

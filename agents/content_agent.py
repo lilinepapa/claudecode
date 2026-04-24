@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from openai import OpenAI
+import anthropic
 
 from agents.base_agent import BaseAgent
 from models.blog_post import BlogPost, PostStatus, Topic
@@ -62,14 +62,11 @@ SYSTEM_PROMPT = _build_system_prompt()
 
 
 class ContentGeneratorAgent(BaseAgent):
-    """DeepSeek API를 사용해 박민산 페르소나로 블로그 포스트를 생성하는 에이전트."""
+    """Anthropic API를 사용해 박민산 페르소나로 블로그 포스트를 생성하는 에이전트."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._client = OpenAI(
-            api_key=self.settings.claude.api_key,
-            base_url=self.settings.claude.base_url,
-        )
+        self._client = anthropic.Anthropic(api_key=self.settings.claude.api_key)
 
     async def run(self, topic: Topic) -> BlogPost:
         post = BlogPost(topic=topic, status=PostStatus.GENERATING)
@@ -87,10 +84,6 @@ class ContentGeneratorAgent(BaseAgent):
 
         return post
 
-    # ------------------------------------------------------------------
-    # Internals
-    # ------------------------------------------------------------------
-
     def _generate(self, topic: Topic) -> str:
         mode_label = f"[{topic.mode} 모드]" if topic.mode else "[박팀장 모드]"
         hook_hint = f"\n도입부 첫 문장으로 이 훅을 활용하세요: {topic.hook}" if topic.hook else ""
@@ -104,19 +97,20 @@ class ContentGeneratorAgent(BaseAgent):
         )
 
         full_text = []
-        stream = self._client.chat.completions.create(
+        with self._client.messages.stream(
             model=self.settings.claude.model,
             max_tokens=self.settings.claude.max_tokens,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
+            system=[
+                {
+                    "type": "text",
+                    "text": SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
             ],
-            stream=True,
-        )
-        for chunk in stream:
-            delta = chunk.choices[0].delta.content
-            if delta:
-                full_text.append(delta)
+            messages=[{"role": "user", "content": user_prompt}],
+        ) as stream:
+            for text in stream.text_stream:
+                full_text.append(text)
 
         return "".join(full_text)
 

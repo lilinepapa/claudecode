@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from openai import OpenAI
+import anthropic
 
 from agents.base_agent import BaseAgent
 from config.settings import Settings
@@ -28,14 +28,11 @@ PLANNER_SYSTEM_PROMPT = """당신은 커리어그래퍼 박민산의 전속 콘�
 
 
 class WeeklyPlannerAgent(BaseAgent):
-    """DeepSeek API를 활용해 7일치 블로그 콘텐츠 계획을 생성하고 저장한다."""
+    """Anthropic API를 활용해 7일치 블로그 콘텐츠 계획을 생성하고 저장한다."""
 
     def __init__(self, settings: Settings | None = None):
         super().__init__(settings)
-        self._client = OpenAI(
-            api_key=self.settings.claude.api_key,
-            base_url=self.settings.claude.base_url,
-        )
+        self._client = anthropic.Anthropic(api_key=self.settings.claude.api_key)
         self._persona = self._load_persona()
 
     def _load_persona(self) -> dict:
@@ -109,15 +106,19 @@ class WeeklyPlannerAgent(BaseAgent):
 }}"""
 
     def _call_api(self, user_prompt: str) -> str:
-        response = self._client.chat.completions.create(
+        response = self._client.messages.create(
             model=self.settings.claude.model,
             max_tokens=4096,
-            messages=[
-                {"role": "system", "content": PLANNER_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
+            system=[
+                {
+                    "type": "text",
+                    "text": PLANNER_SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
             ],
+            messages=[{"role": "user", "content": user_prompt}],
         )
-        return response.choices[0].message.content
+        return response.content[0].text
 
     def _parse_response(self, text: str, day_contexts: list[dict]) -> dict:
         text = text.strip()

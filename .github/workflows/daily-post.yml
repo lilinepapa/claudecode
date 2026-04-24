@@ -34,9 +34,8 @@ jobs:
       - name: .env 파일 생성
         run: |
           cat > .env << 'ENVEOF'
-          DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}
-          LLM_MODEL=deepseek-chat
-          LLM_BASE_URL=https://api.deepseek.com
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          LLM_MODEL=claude-opus-4-7
           NAVER_USERNAME=${{ secrets.NAVER_USERNAME }}
           NAVER_PASSWORD=${{ secrets.NAVER_PASSWORD }}
           NAVER_BLOG_ID=${{ secrets.NAVER_BLOG_ID }}

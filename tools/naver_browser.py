@@ -106,17 +106,17 @@ class NaverBlogBrowser:
         await page.goto(_NAVER_LOGIN_URL, wait_until="load", timeout=30_000)
         await asyncio.sleep(2)
 
-        # 디버그용 스크린샷 저장
-        import pathlib
-        pathlib.Path("logs").mkdir(exist_ok=True)
-        await page.screenshot(path="logs/login_debug.png", full_page=True)
-        logger.info("로그인 페이지 스크린샷 저장: logs/login_debug.png (현재 URL: %s)", page.url)
-
-        # 아이디 / 비밀번호 입력
         await page.wait_for_selector("#id", timeout=15_000)
         await page.fill("#id", self._username)
         await page.fill("#pw", self._password)
         await page.click(".btn_login")
+
+        # 로그인 완료 대기
+        await page.wait_for_load_state("networkidle", timeout=15_000)
+
+        if "nidlogin" in page.url:
+            raise RuntimeError("로그인 실패: 캡차 또는 자격 증명 오류가 발생했습니다.")
+        logger.debug("로그인 성공 (현재 URL: %s)", page.url)
 
         # 로그인 완료 대기 (홈 또는 captcha 화면)
         await page.wait_for_load_state("networkidle", timeout=15_000)

@@ -1,10 +1,10 @@
 name: 네이버 블로그 일일 발행
 
 on:
-  schedule:
-    # 매일 00:00 UTC = 09:00 KST
-    - cron: '0 0 * * *'
-  workflow_dispatch:  # 수동 실행 (테스트용)
+  # 로컬 데몬 모드 사용 중 — 스케줄 비활성화
+  # schedule:
+  #   - cron: '0 0 * * *'
+  workflow_dispatch:  # 수동 실행만 허용
 
 jobs:
   publish:

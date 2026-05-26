@@ -1,10 +1,10 @@
 name: 주간 콘텐츠 계획 수립 (목요일)
 
 on:
-  schedule:
-    # 매주 수요일 23:00 UTC = 목요일 08:00 KST (발행 1시간 전)
-    - cron: '0 23 * * 3'
-  workflow_dispatch:  # 수동 실행 (테스트용)
+  # 로컬 데몬 모드 사용 중 — 스케줄 비활성화
+  # schedule:
+  #   - cron: '0 23 * * 3'
+  workflow_dispatch:  # 수동 실행만 허용
 
 jobs:
   plan:
